@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ChevronDown } from "lucide-react";
 
-interface Marker {
+export interface Marker {
   id: string;
   latitude: number;
   longitude: number;
@@ -21,6 +21,7 @@ interface Marker {
   bod: number;
   conductivity?: number;
   aod?: number;
+  timestamp: Date;
 }
 
 const ADDITIONAL_PARAMETERS = [
@@ -59,9 +60,15 @@ function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number
   return null;
 }
 
-export function MyMap() {
-  const mapRef = useRef<MapRef>(null);
-  const [markers, setMarkers] = useState<Marker[]>([]);
+interface MyMapProps {
+  markers: Marker[];
+  onMarkersChange: (markers: Marker[]) => void;
+  mapRef?: React.RefObject<MapRef>;
+}
+
+export function MyMap({ markers, onMarkersChange, mapRef: externalMapRef }: MyMapProps) {
+  const internalMapRef = useRef<MapRef>(null);
+  const mapRef = externalMapRef || internalMapRef;
   const [tempPin, setTempPin] = useState<TempPin | null>(null);
 const [latitude, setLatitude] = useState<string>("");
   const [longitude, setLongitude] = useState<string>("");
@@ -119,37 +126,40 @@ const turb = parseFloat(turbidity);
 
     if (editingMarkerId) {
       // Update existing marker
-      setMarkers(markers.map(marker => 
-        marker.id === editingMarkerId 
-          ? { 
-              ...marker, 
-              latitude: lat, 
-              longitude: lng, 
-              turbidity: turb, 
-              ph: phVal, 
-              temperature: temp, 
-              bod: bodVal,
-              conductivity: condVal,
-              aod: aodVal,
-            }
-          : marker
-      ));
-      setEditingMarkerId(null);
-    } else {
-      // Add new marker
-      const newMarker: Marker = {
-        id: Date.now().toString(),
-        latitude: lat,
-        longitude: lng,
-        turbidity: turb,
-        ph: phVal,
-        temperature: temp,
-        bod: bodVal,
-        conductivity: condVal,
-        aod: aodVal,
-      };
-      setMarkers([...markers, newMarker]);
-    }
+       const updatedMarkers = markers.map(marker => 
+         marker.id === editingMarkerId 
+           ? { 
+               ...marker, 
+               latitude: lat, 
+               longitude: lng, 
+               turbidity: turb, 
+               ph: phVal, 
+               temperature: temp, 
+               bod: bodVal,
+               conductivity: condVal,
+               aod: aodVal,
+             }
+           : marker
+       );
+       onMarkersChange(updatedMarkers);
+       setEditingMarkerId(null);
+     } else {
+       // Add new marker
+       const newMarker: Marker = {
+         id: Date.now().toString(),
+         latitude: lat,
+         longitude: lng,
+         turbidity: turb,
+         ph: phVal,
+         temperature: temp,
+         bod: bodVal,
+         conductivity: condVal,
+         aod: aodVal,
+         timestamp: new Date(),
+       };
+       const updatedMarkers = [...markers, newMarker];
+       onMarkersChange(updatedMarkers);
+     }
     setLatitude("");
     setLongitude("");
     setTurbidity("");
@@ -162,7 +172,8 @@ const turb = parseFloat(turbidity);
   };
 
 const handleRemoveMarker = (id: string) => {
-    setMarkers(markers.filter((marker) => marker.id !== id));
+    const updatedMarkers = markers.filter((marker) => marker.id !== id);
+    onMarkersChange(updatedMarkers);
     if (editingMarkerId === id) {
       setEditingMarkerId(null);
       setLatitude("");
@@ -233,6 +244,7 @@ const handleRemoveMarker = (id: string) => {
       });
     }
   };
+
 
   const handleMapClick = useCallback((lat: number, lng: number) => {
     setTempPin({ latitude: lat, longitude: lng });

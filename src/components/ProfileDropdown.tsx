@@ -2,19 +2,9 @@
 
 import { useState, useRef, useEffect } from "react";
 import { User, X, History, Mail, Phone, Award as IdCard } from "lucide-react";
+import type { Marker } from "./MyMap";
 
-interface MarkerHistory {
-  id: string;
-  latitude: number;
-  longitude: number;
-  turbidity: number;
-  ph: number;
-  temperature: number;
-  bod: number;
-  conductivity?: number;
-  aod?: number;
-  timestamp: Date;
-}
+type MarkerHistory = Marker;
 
 interface UserProfile {
   name: string;
@@ -26,9 +16,10 @@ interface UserProfile {
 interface ProfileDropdownProps {
   user: UserProfile;
   history: MarkerHistory[];
+  onHistoryItemClick?: (markerId: string) => void;
 }
 
-export function ProfileDropdown({ user, history }: ProfileDropdownProps) {
+export function ProfileDropdown({ user, history, onHistoryItemClick }: ProfileDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -126,7 +117,13 @@ export function ProfileDropdown({ user, history }: ProfileDropdownProps) {
                 {history.map((entry) => (
                   <div
                     key={entry.id}
-                    className="p-3 bg-muted/50 rounded-md text-xs space-y-1"
+                    className="p-3 bg-muted/50 rounded-md text-xs space-y-1 cursor-pointer hover:bg-muted transition-colors"
+                    onClick={() => {
+                      if (onHistoryItemClick) {
+                        onHistoryItemClick(entry.id);
+                        setIsOpen(false);
+                      }
+                    }}
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-medium">

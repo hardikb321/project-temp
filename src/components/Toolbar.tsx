@@ -1,20 +1,11 @@
 import { ProfileDropdown } from "./ProfileDropdown";
+import type { Marker } from "./MyMap";
 
-interface MarkerHistory {
-  id: string;
-  latitude: number;
-  longitude: number;
-  turbidity: number;
-  ph: number;
-  temperature: number;
-  bod: number;
-  conductivity?: number;
-  aod?: number;
-  timestamp: Date;
-}
+type MarkerHistory = Marker;
 
 interface ToolbarProps {
   markerHistory?: MarkerHistory[];
+  onHistoryItemClick?: (markerId: string) => void;
 }
 
 // Mock user data - replace with actual user data from your auth system
@@ -25,7 +16,7 @@ const mockUser = {
   userId: "WQA-2024-0042",
 };
 
-export function Toolbar({ markerHistory = [] }: ToolbarProps) {
+export function Toolbar({ markerHistory = [], onHistoryItemClick }: ToolbarProps) {
   return (
     <header className="w-full border-b border-border bg-background">
       <div className="flex items-center justify-between h-14 px-6">
@@ -34,7 +25,7 @@ export function Toolbar({ markerHistory = [] }: ToolbarProps) {
         </div>
         
         <div className="flex items-center gap-4">
-          <ProfileDropdown user={mockUser} history={markerHistory} />
+          <ProfileDropdown user={mockUser} history={markerHistory} onHistoryItemClick={onHistoryItemClick} />
         </div>
       </div>
     </header>
