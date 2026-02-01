@@ -1090,13 +1090,15 @@ const MAJORITY_CLUSTER_PROPERTIES = {
   count3: ["+", ["case", ["==", ["to-number", ["get", "colorIndex"]], 3], 1, 0]],
 } as Record<string, unknown>;
 
-function buildMajorityColorExpr(colors: [string, string, string, string]): MapLibreGL.ExpressionSpecification {
+function buildMajorityColorExpr(
+  colors: [string, string, string, string]
+): MapLibreGL.ExpressionSpecification {
   const c0 = ["to-number", ["get", "count0"]];
   const c1 = ["to-number", ["get", "count1"]];
   const c2 = ["to-number", ["get", "count2"]];
   const c3 = ["to-number", ["get", "count3"]];
   const max = ["max", c0, c1, c2, c3];
-  return [
+  return ([
     "case",
     ["==", c0, max],
     colors[0],
@@ -1105,7 +1107,7 @@ function buildMajorityColorExpr(colors: [string, string, string, string]): MapLi
     ["==", c2, max],
     colors[2],
     colors[3],
-  ];
+  ]) as unknown as MapLibreGL.ExpressionSpecification;
 }
 
 function MapClusterLayer<
