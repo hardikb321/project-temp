@@ -6,7 +6,7 @@ import React from "react"
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import * as turf from "@turf/turf";
-import { Map, MapControls, MapMarker, MarkerContent, MapPopup, type MapRef, useMap } from "@/components/ui/map";
+import { Map, MapControls, MapMarker, MarkerContent, MapClusterLayer, MapPopup, type MapRef, useMap } from "@/components/ui/map";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,27 @@ export const MARKER_COLORS: { value: MarkerColor; label: string; bgClass: string
   { value: "blue", label: "Blue", bgClass: "bg-blue-500" },
   { value: "yellow", label: "Yellow", bgClass: "bg-yellow-500" },
   { value: "green", label: "Green", bgClass: "bg-green-500" },
+];
+
+const MARKER_COLOR_HEX: Record<MarkerColor, string> = {
+  red: "#ef4444",
+  blue: "#3b82f6",
+  yellow: "#eab308",
+  green: "#22c55e",
+};
+
+const COLOR_INDEX: Record<MarkerColor, number> = {
+  red: 0,
+  blue: 1,
+  yellow: 2,
+  green: 3,
+};
+
+const MARKER_COLOR_HEX_ARRAY: [string, string, string, string] = [
+  "#ef4444",
+  "#3b82f6",
+  "#eab308",
+  "#22c55e",
 ];
 
 export interface Marker {
@@ -41,6 +62,35 @@ const ADDITIONAL_PARAMETERS = [
 ] as const;
 
 type AdditionalParamKey = typeof ADDITIONAL_PARAMETERS[number]["key"];
+
+const COLORS: MarkerColor[] = ["red", "blue", "yellow", "green"];
+
+function randomInRange(min: number, max: number): number {
+  return min + Math.random() * (max - min);
+}
+
+function generateSampleMarkers(count: number, centerLng: number, centerLat: number): Marker[] {
+  const markers: Marker[] = [];
+  const spreadLat = 0.4;
+  const spreadLng = 0.4;
+  for (let i = 0; i < count; i++) {
+    const lat = centerLat + randomInRange(-spreadLat, spreadLat);
+    const lng = centerLng + randomInRange(-spreadLng, spreadLng);
+    const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+    markers.push({
+      id: `sample-${Date.now()}-${i}`,
+      latitude: lat,
+      longitude: lng,
+      color,
+      turbidity: randomInRange(1, 25),
+      ph: randomInRange(6, 8.5),
+      temperature: randomInRange(15, 32),
+      bod: randomInRange(1, 12),
+      timestamp: new Date(),
+    });
+  }
+  return markers;
+}
 
 interface TempPin {
   latitude: number;
@@ -92,6 +142,53 @@ const [latitude, setLatitude] = useState<string>("");
   const [selectedAdditionalParams, setSelectedAdditionalParams] = useState<AdditionalParamKey[]>([]);
   const [conductivity, setConductivity] = useState<string>("");
   const [aod, setAod] = useState<string>("");
+  const [selectedClusterPoint, setSelectedClusterPoint] = useState<{
+    coordinates: [number, number];
+    marker: Marker;
+  } | null>(null);
+  const [samplePointIds, setSamplePointIds] = useState<Set<string>>(new Set());
+
+  const handleAddSamplePoints = useCallback(() => {
+    const centerLng = 77.209;
+    const centerLat = 28.614;
+    const newMarkers = generateSampleMarkers(50, centerLng, centerLat);
+    onMarkersChange([...markers, ...newMarkers]);
+    setSamplePointIds((prev) => {
+      const next = new Set(prev);
+      newMarkers.forEach((m) => next.add(m.id));
+      return next;
+    });
+  }, [markers, onMarkersChange]);
+
+  const handleDeleteSamplePoints = useCallback(() => {
+    const idsToRemove = samplePointIds;
+    onMarkersChange(markers.filter((m) => !idsToRemove.has(m.id)));
+    setSamplePointIds(new Set());
+  }, [markers, onMarkersChange, samplePointIds]);
+
+  const markersGeoJSON = React.useMemo((): GeoJSON.FeatureCollection<GeoJSON.Point> => ({
+    type: "FeatureCollection",
+    features: markers.map((marker) => ({
+      type: "Feature" as const,
+      geometry: {
+        type: "Point" as const,
+        coordinates: [marker.longitude, marker.latitude],
+      },
+      properties: {
+        id: marker.id,
+        color: marker.color ?? "red",
+        colorIndex: COLOR_INDEX[marker.color ?? "red"],
+        colorHex: MARKER_COLOR_HEX[marker.color ?? "red"],
+        turbidity: marker.turbidity,
+        ph: marker.ph,
+        temperature: marker.temperature,
+        bod: marker.bod,
+        conductivity: marker.conductivity,
+        aod: marker.aod,
+        timestamp: marker.timestamp.toISOString(),
+      },
+    })),
+  }), [markers]);
 
   const handleAddMarker = (e: React.FormEvent) => {
     e.preventDefault();
@@ -199,11 +296,19 @@ const turb = parseFloat(turbidity);
     setConductivity("");
     setAod("");
     setSelectedAdditionalParams([]);
+    setTempPin(null);
   };
 
-const handleRemoveMarker = (id: string) => {
+  const handleRemoveMarker = (id: string) => {
     const updatedMarkers = markers.filter((marker) => marker.id !== id);
     onMarkersChange(updatedMarkers);
+    if (samplePointIds.has(id)) {
+      setSamplePointIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
     if (editingMarkerId === id) {
       setEditingMarkerId(null);
       setLatitude("");
@@ -217,6 +322,7 @@ const handleRemoveMarker = (id: string) => {
       setAod("");
       setSelectedAdditionalParams([]);
     }
+    setSelectedClusterPoint(null);
   };
 
   const handleEditMarker = (marker: Marker) => {
@@ -258,6 +364,7 @@ const handleRemoveMarker = (id: string) => {
     setConductivity("");
     setAod("");
     setSelectedAdditionalParams([]);
+    setSelectedClusterPoint(null);
   };
 
   const toggleAdditionalParam = (paramKey: AdditionalParamKey) => {
@@ -283,6 +390,7 @@ const handleRemoveMarker = (id: string) => {
     setTempPin({ latitude: lat, longitude: lng });
     setLatitude(lat.toString());
     setLongitude(lng.toString());
+    setSelectedClusterPoint(null);
   }, []);
 
   return (
@@ -291,24 +399,35 @@ const handleRemoveMarker = (id: string) => {
         <Map ref={mapRef} center={[77.2090, 28.6139]} zoom={5}>
           <MapControls showLocate={true} />
           <MapClickHandler onMapClick={handleMapClick} />
-          {markers.map((marker) => {
-            const colorOption = MARKER_COLORS.find((c) => c.value === (marker.color ?? "red")) ?? MARKER_COLORS[0];
-            return (
-              <MapMarker
-                key={marker.id}
-                longitude={marker.longitude}
-                latitude={marker.latitude}
-                onClick={() => handleMarkerClick(marker)}
-              >
-                <MarkerContent>
-                  <div
-                    className={`relative h-4 w-4 rounded-full border-2 border-white shadow-lg cursor-pointer ${colorOption.bgClass}`}
-                    title="Click to zoom"
-                  />
-                </MarkerContent>
-              </MapMarker>
-            );
-          })}
+
+          {markers.length > 0 && (
+            <MapClusterLayer
+              data={markersGeoJSON}
+              clusterRadius={60}
+              clusterMaxZoom={14}
+              clusterColorByMajority
+              clusterColorMap={MARKER_COLOR_HEX_ARRAY}
+              pointColor="#3b82f6"
+              pointColorProperty="colorHex"
+              onPointClick={(feature, coordinates) => {
+                const markerId = feature.properties?.id;
+                const marker = markers.find((m) => m.id === markerId);
+                if (marker) {
+                  setSelectedClusterPoint({ coordinates, marker });
+                }
+              }}
+              onClusterClick={(clusterId, coordinates, pointCount) => {
+                if (mapRef.current) {
+                  mapRef.current.flyTo({
+                    center: coordinates,
+                    zoom: Math.min(mapRef.current.getZoom() + 2, 14),
+                    duration: 1000,
+                  });
+                }
+              }}
+            />
+          )}
+
           {tempPin && (
             <>
               <MapMarker
@@ -339,6 +458,79 @@ const handleRemoveMarker = (id: string) => {
                 </div>
               </MapPopup>
             </>
+          )}
+
+          {selectedClusterPoint && (
+            <MapPopup
+              key={`${selectedClusterPoint.coordinates[0]}-${selectedClusterPoint.coordinates[1]}`}
+              longitude={selectedClusterPoint.coordinates[0]}
+              latitude={selectedClusterPoint.coordinates[1]}
+              onClose={() => setSelectedClusterPoint(null)}
+              closeOnClick={false}
+              focusAfterOpen={false}
+              closeButton
+            >
+              <div className="space-y-2 p-2">
+                <p className="text-sm font-semibold">Water Quality Data</p>
+                <div className="grid grid-cols-2 gap-1 text-xs">
+                  <div>
+                    <span className="font-medium">Turbidity:</span>
+                    <br />
+                    {selectedClusterPoint.marker.turbidity} NTU
+                  </div>
+                  <div>
+                    <span className="font-medium">pH:</span>
+                    <br />
+                    {selectedClusterPoint.marker.ph}
+                  </div>
+                  <div>
+                    <span className="font-medium">Temperature:</span>
+                    <br />
+                    {selectedClusterPoint.marker.temperature}°C
+                  </div>
+                  <div>
+                    <span className="font-medium">BOD:</span>
+                    <br />
+                    {selectedClusterPoint.marker.bod} mg/L
+                  </div>
+                  {selectedClusterPoint.marker.conductivity != null && (
+                    <div>
+                      <span className="font-medium">Conductivity:</span>
+                      <br />
+                      {selectedClusterPoint.marker.conductivity} μS/cm
+                    </div>
+                  )}
+                  {selectedClusterPoint.marker.aod != null && (
+                    <div>
+                      <span className="font-medium">AOD:</span>
+                      <br />
+                      {selectedClusterPoint.marker.aod}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      handleEditMarker(selectedClusterPoint.marker);
+                      setSelectedClusterPoint(null);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => {
+                      handleRemoveMarker(selectedClusterPoint.marker.id);
+                      setSelectedClusterPoint(null);
+                    }}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            </MapPopup>
           )}
         </Map>
       </Card>
@@ -561,6 +753,21 @@ const handleRemoveMarker = (id: string) => {
               )}
             </div>
           </form>
+
+          <div className="mt-4 pt-4 border-t space-y-2">
+            <p className="text-sm font-medium text-muted-foreground">Test data</p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={handleAddSamplePoints}>
+                Add 50 random points
+              </Button>
+              {samplePointIds.size > 0 && (
+                <Button type="button" variant="outline" size="sm" onClick={handleDeleteSamplePoints}>
+                  Delete sample points ({samplePointIds.size})
+                </Button>
+              )}
+            </div>
+          </div>
+
 {markers.length > 0 && (
             <div className="mt-4 pt-4 border-t">
               <p className="text-sm font-medium mb-2">

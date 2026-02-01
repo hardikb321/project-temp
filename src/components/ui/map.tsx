@@ -1062,8 +1062,14 @@ type MapClusterLayerProps<
   clusterColors?: [string, string, string];
   /** Point count thresholds for color/size steps: [medium, large] (default: [100, 750]) */
   clusterThresholds?: [number, number];
+  /** When true, cluster color = majority color of points (requires colorIndex 0-3 on each point). Uses clusterColorMap. */
+  clusterColorByMajority?: boolean;
+  /** Four hex colors [red, blue, yellow, green] when clusterColorByMajority (same order as colorIndex 0–3). */
+  clusterColorMap?: [string, string, string, string];
   /** Color for unclustered individual points (default: "#3b82f6") */
   pointColor?: string;
+  /** Property name on each point for unclustered circle color (e.g. "colorHex"). Overrides pointColor when present. */
+  pointColorProperty?: string;
   /** Callback when an unclustered point is clicked */
   onPointClick?: (
     feature: GeoJSON.Feature<GeoJSON.Point, P>,
@@ -1077,6 +1083,31 @@ type MapClusterLayerProps<
   ) => void;
 };
 
+const MAJORITY_CLUSTER_PROPERTIES = {
+  count0: ["+", ["case", ["==", ["to-number", ["get", "colorIndex"]], 0], 1, 0]],
+  count1: ["+", ["case", ["==", ["to-number", ["get", "colorIndex"]], 1], 1, 0]],
+  count2: ["+", ["case", ["==", ["to-number", ["get", "colorIndex"]], 2], 1, 0]],
+  count3: ["+", ["case", ["==", ["to-number", ["get", "colorIndex"]], 3], 1, 0]],
+} as Record<string, unknown>;
+
+function buildMajorityColorExpr(colors: [string, string, string, string]): MapLibreGL.ExpressionSpecification {
+  const c0 = ["to-number", ["get", "count0"]];
+  const c1 = ["to-number", ["get", "count1"]];
+  const c2 = ["to-number", ["get", "count2"]];
+  const c3 = ["to-number", ["get", "count3"]];
+  const max = ["max", c0, c1, c2, c3];
+  return [
+    "case",
+    ["==", c0, max],
+    colors[0],
+    ["==", c1, max],
+    colors[1],
+    ["==", c2, max],
+    colors[2],
+    colors[3],
+  ];
+}
+
 function MapClusterLayer<
   P extends GeoJSON.GeoJsonProperties = GeoJSON.GeoJsonProperties
 >({
@@ -1085,7 +1116,10 @@ function MapClusterLayer<
   clusterRadius = 50,
   clusterColors = ["#51bbd6", "#f1f075", "#f28cb1"],
   clusterThresholds = [100, 750],
+  clusterColorByMajority = false,
+  clusterColorMap = ["#ef4444", "#3b82f6", "#eab308", "#22c55e"],
   pointColor = "#3b82f6",
+  pointColorProperty,
   onPointClick,
   onClusterClick,
 }: MapClusterLayerProps<P>) {
@@ -1099,38 +1133,44 @@ function MapClusterLayer<
   const stylePropsRef = useRef({
     clusterColors,
     clusterThresholds,
+    clusterColorByMajority,
+    clusterColorMap,
     pointColor,
+    pointColorProperty,
   });
+
+  const clusterCircleColor = clusterColorByMajority
+    ? buildMajorityColorExpr(clusterColorMap)
+    : ([
+        "step",
+        ["get", "point_count"],
+        clusterColors[0],
+        clusterThresholds[0],
+        clusterColors[1],
+        clusterThresholds[1],
+        clusterColors[2],
+      ] as MapLibreGL.ExpressionSpecification);
 
   // Add source and layers on mount
   useEffect(() => {
     if (!isLoaded || !map) return;
 
-    // Add clustered GeoJSON source
     map.addSource(sourceId, {
       type: "geojson",
       data,
       cluster: true,
       clusterMaxZoom,
       clusterRadius,
+      ...(clusterColorByMajority && { clusterProperties: MAJORITY_CLUSTER_PROPERTIES }),
     });
 
-    // Add cluster circles layer
     map.addLayer({
       id: clusterLayerId,
       type: "circle",
       source: sourceId,
       filter: ["has", "point_count"],
       paint: {
-        "circle-color": [
-          "step",
-          ["get", "point_count"],
-          clusterColors[0],
-          clusterThresholds[0],
-          clusterColors[1],
-          clusterThresholds[1],
-          clusterColors[2],
-        ],
+        "circle-color": clusterCircleColor,
         "circle-radius": [
           "step",
           ["get", "point_count"],
@@ -1158,14 +1198,17 @@ function MapClusterLayer<
       },
     });
 
-    // Add unclustered point layer
+    // Add unclustered point layer (color from point property or single pointColor)
+    const unclusteredCircleColor = pointColorProperty
+      ? (["coalesce", ["get", pointColorProperty], pointColor] as MapLibreGL.ExpressionSpecification)
+      : pointColor;
     map.addLayer({
       id: unclusteredLayerId,
       type: "circle",
       source: sourceId,
       filter: ["!", ["has", "point_count"]],
       paint: {
-        "circle-color": pointColor,
+        "circle-color": unclusteredCircleColor,
         "circle-radius": 6,
       },
     });
@@ -1200,21 +1243,25 @@ function MapClusterLayer<
     if (!isLoaded || !map) return;
 
     const prev = stylePropsRef.current;
+    const clusterColorExpr = clusterColorByMajority
+      ? buildMajorityColorExpr(clusterColorMap)
+      : ([
+          "step",
+          ["get", "point_count"],
+          clusterColors[0],
+          clusterThresholds[0],
+          clusterColors[1],
+          clusterThresholds[1],
+          clusterColors[2],
+        ] as MapLibreGL.ExpressionSpecification);
     const colorsChanged =
       prev.clusterColors !== clusterColors ||
-      prev.clusterThresholds !== clusterThresholds;
+      prev.clusterThresholds !== clusterThresholds ||
+      prev.clusterColorByMajority !== clusterColorByMajority ||
+      prev.clusterColorMap !== clusterColorMap;
 
-    // Update cluster layer colors and sizes
     if (map.getLayer(clusterLayerId) && colorsChanged) {
-      map.setPaintProperty(clusterLayerId, "circle-color", [
-        "step",
-        ["get", "point_count"],
-        clusterColors[0],
-        clusterThresholds[0],
-        clusterColors[1],
-        clusterThresholds[1],
-        clusterColors[2],
-      ]);
+      map.setPaintProperty(clusterLayerId, "circle-color", clusterColorExpr);
       map.setPaintProperty(clusterLayerId, "circle-radius", [
         "step",
         ["get", "point_count"],
@@ -1227,11 +1274,24 @@ function MapClusterLayer<
     }
 
     // Update unclustered point layer color
-    if (map.getLayer(unclusteredLayerId) && prev.pointColor !== pointColor) {
-      map.setPaintProperty(unclusteredLayerId, "circle-color", pointColor);
+    const unclusteredColor = pointColorProperty
+      ? (["coalesce", ["get", pointColorProperty], pointColor] as MapLibreGL.ExpressionSpecification)
+      : pointColor;
+    if (
+      map.getLayer(unclusteredLayerId) &&
+      (prev.pointColor !== pointColor || prev.pointColorProperty !== pointColorProperty)
+    ) {
+      map.setPaintProperty(unclusteredLayerId, "circle-color", unclusteredColor);
     }
 
-    stylePropsRef.current = { clusterColors, clusterThresholds, pointColor };
+    stylePropsRef.current = {
+      clusterColors,
+      clusterThresholds,
+      clusterColorByMajority,
+      clusterColorMap,
+      pointColor,
+      pointColorProperty,
+    };
   }, [
     isLoaded,
     map,
@@ -1239,7 +1299,10 @@ function MapClusterLayer<
     unclusteredLayerId,
     clusterColors,
     clusterThresholds,
+    clusterColorByMajority,
+    clusterColorMap,
     pointColor,
+    pointColorProperty,
   ]);
 
   // Handle click events
