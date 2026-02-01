@@ -5,16 +5,27 @@
 import React from "react"
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import * as turf from "@turf/turf";
 import { Map, MapControls, MapMarker, MarkerContent, MapPopup, type MapRef, useMap } from "@/components/ui/map";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ChevronDown } from "lucide-react";
 
+export type MarkerColor = "red" | "blue" | "yellow" | "green";
+
+export const MARKER_COLORS: { value: MarkerColor; label: string; bgClass: string }[] = [
+  { value: "red", label: "Red", bgClass: "bg-red-500" },
+  { value: "blue", label: "Blue", bgClass: "bg-blue-500" },
+  { value: "yellow", label: "Yellow", bgClass: "bg-yellow-500" },
+  { value: "green", label: "Green", bgClass: "bg-green-500" },
+];
+
 export interface Marker {
   id: string;
   latitude: number;
   longitude: number;
+  color?: MarkerColor;
   turbidity: number;
   ph: number;
   temperature: number;
@@ -77,6 +88,7 @@ const [latitude, setLatitude] = useState<string>("");
   const [temperature, setTemperature] = useState<string>("");
   const [bod, setBod] = useState<string>("");
   const [editingMarkerId, setEditingMarkerId] = useState<string | null>(null);
+  const [markerColor, setMarkerColor] = useState<MarkerColor>("red");
   const [selectedAdditionalParams, setSelectedAdditionalParams] = useState<AdditionalParamKey[]>([]);
   const [conductivity, setConductivity] = useState<string>("");
   const [aod, setAod] = useState<string>("");
@@ -98,6 +110,21 @@ const [latitude, setLatitude] = useState<string>("");
 
     if (lng < -180 || lng > 180) {
       alert("Longitude must be between -180 and 180");
+      return;
+    }
+
+    // Enforce minimum 20m distance between points
+    const newPoint = turf.point([lng, lat]);
+    const tooClose = markers.some((marker) => {
+      // When editing, ignore the marker being edited in distance check
+      if (editingMarkerId && marker.id === editingMarkerId) return false;
+      const existingPoint = turf.point([marker.longitude, marker.latitude]);
+      const distanceMeters = turf.distance(newPoint, existingPoint, { units: "meters" });
+      return distanceMeters < 20;
+    });
+
+    if (tooClose) {
+      alert("Points must be at least 20 meters apart. Please choose a different location.");
       return;
     }
 
@@ -132,6 +159,7 @@ const turb = parseFloat(turbidity);
                ...marker, 
                latitude: lat, 
                longitude: lng, 
+               color: markerColor,
                turbidity: turb, 
                ph: phVal, 
                temperature: temp, 
@@ -149,6 +177,7 @@ const turb = parseFloat(turbidity);
          id: Date.now().toString(),
          latitude: lat,
          longitude: lng,
+         color: markerColor,
          turbidity: turb,
          ph: phVal,
          temperature: temp,
@@ -166,6 +195,7 @@ const turb = parseFloat(turbidity);
     setPh("");
     setTemperature("");
     setBod("");
+    setMarkerColor("red");
     setConductivity("");
     setAod("");
     setSelectedAdditionalParams([]);
@@ -182,6 +212,7 @@ const handleRemoveMarker = (id: string) => {
       setPh("");
       setTemperature("");
       setBod("");
+      setMarkerColor("red");
       setConductivity("");
       setAod("");
       setSelectedAdditionalParams([]);
@@ -192,6 +223,7 @@ const handleRemoveMarker = (id: string) => {
     setEditingMarkerId(marker.id);
     setLatitude(marker.latitude.toString());
     setLongitude(marker.longitude.toString());
+    setMarkerColor(marker.color ?? "red");
     setTurbidity(marker.turbidity.toString());
     setPh(marker.ph.toString());
     setTemperature(marker.temperature.toString());
@@ -222,6 +254,7 @@ const handleRemoveMarker = (id: string) => {
     setPh("");
     setTemperature("");
     setBod("");
+    setMarkerColor("red");
     setConductivity("");
     setAod("");
     setSelectedAdditionalParams([]);
@@ -258,21 +291,24 @@ const handleRemoveMarker = (id: string) => {
         <Map ref={mapRef} center={[77.2090, 28.6139]} zoom={5}>
           <MapControls showLocate={true} />
           <MapClickHandler onMapClick={handleMapClick} />
-          {markers.map((marker) => (
-            <MapMarker
-              key={marker.id}
-              longitude={marker.longitude}
-              latitude={marker.latitude}
-              onClick={() => handleMarkerClick(marker)}
-            >
-              <MarkerContent>
-                <div
-                  className="relative h-4 w-4 rounded-full border-2 border-white bg-red-500 shadow-lg cursor-pointer"
-                  title="Click to zoom"
-                />
-              </MarkerContent>
-            </MapMarker>
-          ))}
+          {markers.map((marker) => {
+            const colorOption = MARKER_COLORS.find((c) => c.value === (marker.color ?? "red")) ?? MARKER_COLORS[0];
+            return (
+              <MapMarker
+                key={marker.id}
+                longitude={marker.longitude}
+                latitude={marker.latitude}
+                onClick={() => handleMarkerClick(marker)}
+              >
+                <MarkerContent>
+                  <div
+                    className={`relative h-4 w-4 rounded-full border-2 border-white shadow-lg cursor-pointer ${colorOption.bgClass}`}
+                    title="Click to zoom"
+                  />
+                </MarkerContent>
+              </MapMarker>
+            );
+          })}
           {tempPin && (
             <>
               <MapMarker
@@ -342,6 +378,24 @@ const handleRemoveMarker = (id: string) => {
                   required
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Marker color</label>
+              <div className="flex gap-2">
+                {MARKER_COLORS.map(({ value, label, bgClass }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setMarkerColor(value)}
+                    className={`h-8 w-8 rounded-full border-2 shadow-sm transition-all ${bgClass} ${
+                      markerColor === value ? "border-foreground ring-2 ring-offset-2 ring-offset-background ring-foreground scale-110" : "border-white hover:scale-105"
+                    }`}
+                    title={label}
+                  />
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">Red, Blue, Yellow, Green</p>
             </div>
             
             <div className="pt-2 border-t">
