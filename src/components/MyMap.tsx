@@ -396,7 +396,7 @@ const turb = parseFloat(turbidity);
   return (
     <div className="flex gap-4 w-full">
       <Card className="flex-1 h-[500px] p-0 overflow-hidden">
-        <Map ref={mapRef} center={[77.2090, 28.6139]} zoom={5}>
+        <Map ref={mapRef} center={[77.2090, 28.6139]} zoom={5} theme="light">
           <MapControls showLocate={true} />
           <MapClickHandler onMapClick={handleMapClick} />
 
@@ -777,18 +777,30 @@ const turb = parseFloat(turbidity);
                 {markers.map((marker) => (
                   <div
                     key={marker.id}
-                    className="text-xs p-3 bg-muted rounded space-y-2"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleMarkerClick(marker)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleMarkerClick(marker);
+                      }
+                    }}
+                    className="text-xs p-3 bg-muted rounded space-y-2 cursor-pointer hover:bg-muted/80 transition-colors"
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-medium">
                         {marker.latitude.toFixed(4)}, {marker.longitude.toFixed(4)}
                       </span>
-                      <div className="flex gap-1">
+                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleEditMarker(marker)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditMarker(marker);
+                          }}
                           className={`h-6 px-2 ${editingMarkerId === marker.id ? "bg-primary text-primary-foreground" : ""}`}
                         >
                           Edit
@@ -797,7 +809,10 @@ const turb = parseFloat(turbidity);
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleRemoveMarker(marker.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveMarker(marker.id);
+                          }}
                           className="h-6 px-2"
                         >
                           Remove
