@@ -10,7 +10,7 @@ import { Map, MapControls, MapMarker, MarkerContent, MapClusterLayer, MapPopup, 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, X, History } from "lucide-react";
 
 export type MarkerColor = "red" | "blue" | "yellow" | "green";
 
@@ -146,7 +146,21 @@ const [latitude, setLatitude] = useState<string>("");
     coordinates: [number, number];
     marker: Marker;
   } | null>(null);
+  const [markerHistoryPanelMarker, setMarkerHistoryPanelMarker] = useState<Marker | null>(null);
+  const [historyPanelVisible, setHistoryPanelVisible] = useState(false);
   const [samplePointIds, setSamplePointIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (markerHistoryPanelMarker) {
+      setHistoryPanelVisible(false);
+      const t = requestAnimationFrame(() => {
+        requestAnimationFrame(() => setHistoryPanelVisible(true));
+      });
+      return () => cancelAnimationFrame(t);
+    } else {
+      setHistoryPanelVisible(false);
+    }
+  }, [markerHistoryPanelMarker]);
 
   const handleAddSamplePoints = useCallback(() => {
     const centerLng = 77.209;
@@ -393,8 +407,23 @@ const turb = parseFloat(turbidity);
     setSelectedClusterPoint(null);
   }, []);
 
+  // For now, history is the marker's current data as a single "recent" entry. Replace with backend fetch later.
+  const pointHistoryEntries = markerHistoryPanelMarker
+    ? [
+        {
+          timestamp: markerHistoryPanelMarker.timestamp,
+          turbidity: markerHistoryPanelMarker.turbidity,
+          ph: markerHistoryPanelMarker.ph,
+          temperature: markerHistoryPanelMarker.temperature,
+          bod: markerHistoryPanelMarker.bod,
+          conductivity: markerHistoryPanelMarker.conductivity,
+          aod: markerHistoryPanelMarker.aod,
+        },
+      ]
+    : [];
+
   return (
-    <div className="flex gap-4 w-full">
+    <div className="flex gap-4 w-full relative">
       <Card className="flex-1 h-[500px] p-0 overflow-hidden">
         <Map ref={mapRef} center={[77.2090, 28.6139]} zoom={5} theme="light">
           <MapControls showLocate={true} />
@@ -414,6 +443,7 @@ const turb = parseFloat(turbidity);
                 const marker = markers.find((m) => m.id === markerId);
                 if (marker) {
                   setSelectedClusterPoint({ coordinates, marker });
+                  setMarkerHistoryPanelMarker(marker);
                 }
               }}
               onClusterClick={(clusterId, coordinates, pointCount) => {
@@ -838,6 +868,75 @@ const turb = parseFloat(turbidity);
           )}
         </CardContent>
       </Card>
+
+      {/* Point history slide-over panel (opens when clicking a marker on the map) */}
+      {markerHistoryPanelMarker && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/50 transition-opacity"
+            aria-hidden
+            onClick={() => setMarkerHistoryPanelMarker(null)}
+          />
+          <aside
+            className={`fixed right-0 top-0 z-50 h-full w-full max-w-md bg-card border-l border-border shadow-xl flex flex-col transition-transform duration-300 ease-out ${
+              historyPanelVisible ? "translate-x-0" : "translate-x-full"
+            }`}
+            role="dialog"
+            aria-label="Point history"
+          >
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h2 className="font-semibold text-lg flex items-center gap-2">
+                <History className="h-5 w-5 text-muted-foreground" />
+                Point History
+              </h2>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setMarkerHistoryPanelMarker(null)}
+                className="h-8 w-8 p-0"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              <p className="text-sm text-muted-foreground mb-3">
+                {markerHistoryPanelMarker.latitude.toFixed(4)}, {markerHistoryPanelMarker.longitude.toFixed(4)}
+              </p>
+              <p className="text-xs text-muted-foreground mb-4">
+                Recent data for this point. History will be loaded from the backend.
+              </p>
+              <ul className="space-y-3">
+                {pointHistoryEntries.map((entry, index) => (
+                  <li
+                    key={index}
+                    className="p-4 rounded-lg border border-border bg-muted/30 space-y-2"
+                  >
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {entry.timestamp instanceof Date
+                        ? entry.timestamp.toLocaleString()
+                        : new Date(entry.timestamp).toLocaleString()}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div><span className="text-muted-foreground">Turbidity:</span> {entry.turbidity} NTU</div>
+                      <div><span className="text-muted-foreground">pH:</span> {entry.ph}</div>
+                      <div><span className="text-muted-foreground">Temp:</span> {entry.temperature}°C</div>
+                      <div><span className="text-muted-foreground">BOD:</span> {entry.bod} mg/L</div>
+                      {entry.conductivity != null && (
+                        <div><span className="text-muted-foreground">Conductivity:</span> {entry.conductivity} μS/cm</div>
+                      )}
+                      {entry.aod != null && (
+                        <div><span className="text-muted-foreground">AOD:</span> {entry.aod}</div>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </aside>
+        </>
+      )}
     </div>
   );
 }
