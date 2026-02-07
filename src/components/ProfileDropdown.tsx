@@ -60,7 +60,7 @@ export function ProfileDropdown({ user, history, onHistoryItemClick }: ProfileDr
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-12 w-80 bg-background border border-border rounded-lg shadow-lg z-50 overflow-hidden">
+        <div className="absolute right-0 top-12 w-80 bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-border bg-muted/30">
             <h3 className="font-semibold text-lg">Profile</h3>

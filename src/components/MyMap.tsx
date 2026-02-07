@@ -124,7 +124,7 @@ function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number
 interface MyMapProps {
   markers: Marker[];
   onMarkersChange: (markers: Marker[]) => void;
-  mapRef?: React.RefObject<MapRef>;
+  mapRef?: React.RefObject<MapRef | null>;
 }
 
 export function MyMap({ markers, onMarkersChange, mapRef: externalMapRef }: MyMapProps) {
