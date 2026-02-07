@@ -11,6 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, X, History } from "lucide-react";
+import type { WaterType } from "@/types";
+import { WATER_TYPE_LABELS } from "@/types";
 
 export type MarkerColor = "red" | "blue" | "yellow" | "green";
 
@@ -125,9 +127,10 @@ interface MyMapProps {
   markers: Marker[];
   onMarkersChange: (markers: Marker[]) => void;
   mapRef?: React.RefObject<MapRef | null>;
+  waterType?: WaterType;
 }
 
-export function MyMap({ markers, onMarkersChange, mapRef: externalMapRef }: MyMapProps) {
+export function MyMap({ markers, onMarkersChange, mapRef: externalMapRef, waterType }: MyMapProps) {
   const internalMapRef = useRef<MapRef>(null);
   const mapRef = externalMapRef || internalMapRef;
   const [tempPin, setTempPin] = useState<TempPin | null>(null);
@@ -567,7 +570,14 @@ const turb = parseFloat(turbidity);
 
 <Card className="w-96 h-fit">
         <CardHeader>
-          <CardTitle>{editingMarkerId ? "Edit Marker" : "Add Marker"}</CardTitle>
+          <CardTitle>
+            {editingMarkerId ? "Edit Marker" : "Add Marker"}
+            {waterType && (
+              <span className="font-normal text-muted-foreground ml-1">
+                ({WATER_TYPE_LABELS[waterType]})
+              </span>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleAddMarker} className="space-y-4">
@@ -801,7 +811,7 @@ const turb = parseFloat(turbidity);
 {markers.length > 0 && (
             <div className="mt-4 pt-4 border-t">
               <p className="text-sm font-medium mb-2">
-                Markers ({markers.length})
+                Markers ({markers.length}){waterType && ` — ${WATER_TYPE_LABELS[waterType]}`}
               </p>
               <div className="space-y-2 max-h-60 overflow-y-auto">
                 {markers.map((marker) => (
